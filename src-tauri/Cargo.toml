@@ -40,7 +40,7 @@ windows-native-keyring-store = "1.0.0"
 apple-native-keyring-store = "1.0.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-dbus-secret-service-keyring-store = "1.0.0"
+dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
