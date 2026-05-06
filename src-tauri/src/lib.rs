@@ -543,7 +543,7 @@ pub fn run() {
         dbus_secret_service_keyring_store::Store::new().expect("Failed to init Linux Secret Service"),
     );
 
-    let config_data = fs::read_to_string("./config.json").unwrap_or_else(|_| "{}".to_string());
+    let config_data = std::fs::read_to_string("./config.json").unwrap_or_else(|_| "{}".to_string());
     let config: AppConfig = serde_json::from_str(&config_data).unwrap_or_default();
 
     let is_permanently_scanning = config.flags.get("isPermanentScan").copied().unwrap_or(true);
@@ -584,6 +584,19 @@ pub fn run() {
             _ => {}
         })
         .setup(move |app| {
+            use tauri::Manager;
+            
+            let pic_dir = app.path().picture_dir().expect("Failed to resolve Pictures directory");
+            let saucebottle_dir = pic_dir.join("SauceBottle");
+            
+            let input_dir = saucebottle_dir.join("input");
+            let results_dir = saucebottle_dir.join("results");
+            
+            std::fs::create_dir_all(&input_dir).expect("Failed to create input directory");
+            std::fs::create_dir_all(&results_dir).expect("Failed to create results directory");
+            
+            println!("SauceBottle File System initialized at: {:?}", saucebottle_dir);
+
             let handle = app.handle().clone();
             let client = Arc::clone(&api_client);
             let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))
@@ -629,6 +642,7 @@ pub fn run() {
                 queued_tracker,
                 config: live_config,
             });
+
             Ok(())
         })
         .run(tauri::generate_context!())
