@@ -20,11 +20,14 @@ import {
 // ---------------------------------*
 
 const tips = [
-  "Tip: Pin your '/input' folder to your OS Quick Access for faster drag-and-drops!",
+  "Tip: Pin your '/input' folder to your OS Quick Access for easier usage!",
+  "Tip: Add your API keys in the Credentials tab for a significantly better matching rate.",
   "Tip: You can adjust the invalid match threshold in the Settings tab.",
   "Tip: SauceBottle ignores files that aren't valid images, so don't worry about text files.",
   "Tip: Turn on 'Apply modifications to saved file' to save disk space on massive images.",
-  "Tip: You can drag and drop folders into the input directory to scan everything inside."
+  "Tip: You can drag and drop entire folders into the app to scan everything inside.",
+  "Tip: Click the Terminal icon at the bottom to check the live logs if a process seems stuck.",
+  "Tip: Can't find your sorted images? Check the 'SauceBottle' folder inside your OS Pictures directory.",
 ];
 
 const currentTip = ref(tips[0]);
@@ -53,7 +56,7 @@ watch(() => appState.value, (newState) => {
     tipInterval = window.setInterval(() => {
       index = (index + 1) % tips.length;
       currentTip.value = tips[index];
-    }, 4500); 
+    }, 6000);
   } else {
     clearInterval(tipInterval);
   }
@@ -72,7 +75,7 @@ onUnmounted(() => {
 // ---------------------------------*
 
 /**
- * Fallback handler if the processing image gets deleted or corrupted before rendering.
+ * Fallback handler if the processing image gets corrupted before rendering.
  */
 const handleImageError = () => {
   if (appState.value !== 'welcome') {
@@ -89,8 +92,12 @@ const handleImageError = () => {
         <div class="icon-ring organic-blob">
           <DropletIcon :size="32" class="organic-icon" fill="currentColor" />
         </div>
-        <h2>Ready to Sort</h2>
-        <p>Drop images into your <code>/input</code> folder.<br>SauceBottle will identify and categorize them {{ isPermanentScan ? "automatically" : "when you press Run" }}.</p>
+        <h2>What's the Sauce?</h2>
+        <p>
+          Sort your images by placing them into your <code>/input</code> folder or dropping them here.
+          <span class="spacer"></span>
+          SauceBottle will identify and categorize them {{ isPermanentScan ? "automatically" : "when you press Run" }}.
+        </p>
 
         <div v-if="offlineQueueCount > 0" class="paused-queue-badge">
           <span class="pulse paused-pulse"></span>
@@ -105,7 +112,7 @@ const handleImageError = () => {
           <h3 class="update-title">Updating SauceBottle</h3>
           <p class="update-status">{{ updateStatus }}</p>
           
-          <div class="progress-container">
+          <div class="progress-container" v-if="updateStatus !== 'Checking for updates...'">
             <div class="progress-track-large">
               <div class="progress-bar-fill" :style="{ width: updateProgress + '%' }"></div>
             </div>
@@ -192,6 +199,11 @@ const handleImageError = () => {
   box-sizing: border-box; 
   height: 100%; 
   justify-content: center; 
+}
+
+.spacer {
+  display: block;
+  height: 4px;
 }
 
 /* -- UPDATER SCREEN -- */

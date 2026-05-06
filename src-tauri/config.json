@@ -15,11 +15,11 @@
   },
   "flags": {
     "listDupes": true,
+    "allowResizing": true,
     "allowImageConversion": true,
     "applyModsToSaved": false,
-    "isPermanentScan": true,
-    "allowResizing": true,
     "allowShrinking": true,
+    "isPermanentScan": true,
     "renameFoundImages": true,
     "renameInvalidImages": true
   },

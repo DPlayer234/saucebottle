@@ -183,7 +183,7 @@ pub fn run_sweep(
 ) {
     let app_dir = handle
         .path()
-        .app_data_dir()
+        .picture_dir()
         .expect("Path resolution failed");
     let watch_path = app_dir.join("input");
 

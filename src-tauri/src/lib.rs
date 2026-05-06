@@ -285,8 +285,9 @@ fn import_to_input_recursive(
 /// * `Result<String, String>` - A success message with the file count, or an error.
 #[tauri::command]
 fn process_dropped_files(paths: Vec<String>, handle: tauri::AppHandle) -> Result<String, String> {
-    let app_dir = handle.path().app_data_dir().map_err(|e| e.to_string())?;
-    let input_dir = app_dir.join("input");
+    let docs_dir = handle.path().picture_dir().expect("Path resolution failed");
+    let saucebottle_dir = docs_dir.join("SauceBottle");
+    let input_dir = saucebottle_dir.join("input");
 
     fs::create_dir_all(&input_dir).map_err(|e| e.to_string())?;
 
@@ -311,8 +312,9 @@ fn process_dropped_files(paths: Vec<String>, handle: tauri::AppHandle) -> Result
 /// * `Result<usize, String>` - The number of valid images found.
 #[tauri::command]
 fn check_input_folder(handle: tauri::AppHandle) -> Result<usize, String> {
-    let app_dir = handle.path().app_data_dir().map_err(|e| e.to_string())?;
-    let input_dir = app_dir.join("input");
+    let docs_dir = handle.path().picture_dir().expect("Path resolution failed");
+    let saucebottle_dir = docs_dir.join("SauceBottle");
+    let input_dir = saucebottle_dir.join("input");
 
     // Count how many files in the folder are valid images
     let count = std::fs::read_dir(input_dir)
@@ -459,6 +461,7 @@ async fn download_image(
 /// # Arguments
 /// * `folder_target` - What folder we save to (either "results" or "downloads").
 /// * `state` - The managed Tauri application state.
+/// * `handle` - The Tauri AppHandle for path resolution.
 ///
 /// # Returns
 /// * `Result<(), String>` - Success, or an error if it fails to spawn.
@@ -466,13 +469,21 @@ async fn download_image(
 fn open_system_folder(
     folder_target: String,
     state: tauri::State<'_, AppState>,
+    handle: tauri::AppHandle
 ) -> Result<(), String> {
     let config = state.config.lock().unwrap().clone();
 
     // Resolve the base results directory
     let mut target_dir = std::path::PathBuf::from(&config.output_folder);
+    
+    // If the user hasn't set a custom folder, use Pictures/SauceBottle/results as fallback
     if target_dir.as_os_str().is_empty() {
-        target_dir = std::path::PathBuf::from("./results");
+        let pic_dir = handle
+            .path()
+            .picture_dir()
+            .map_err(|_| "Failed to resolve OS Pictures directory".to_string())?;
+            
+        target_dir = pic_dir.join("SauceBottle").join("results");
     }
 
     // Append the downloads folder if requested
@@ -491,7 +502,7 @@ fn open_system_folder(
     let absolute_path = std::fs::canonicalize(&target_dir).unwrap_or(target_dir);
     let clean_path = absolute_path.to_string_lossy().replace("\\\\?\\", "");
 
-    println!("{}", clean_path);
+    println!("Opening: {}", clean_path);
 
     // Trigger the file explorer (OS dependent)
     #[cfg(target_os = "windows")]

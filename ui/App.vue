@@ -109,13 +109,26 @@ const openResultsFolder = async () => {
   }
 };
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 /**
- * Silently pings GitHub for a new release. If found, asks the user if they want to install it.
- * If yes, switches the UI to the updating screen and handles the download/relaunch cycle.
+ * Initiates the app boot sequence.
+ * Forces the UI into the 'updating' loading screen for a minimum of 5 seconds while
+ * concurrently checking GitHub for a new release.
  */
-const checkForUpdates = async () => {
+const runBootSequence = async () => {
+  appState.value = 'updating';
+  updateStatus.value = 'Checking for updates...';
+  updateProgress.value = 0; 
+
   try {
-    const update = await check();
+    const [update, _] = await Promise.all([
+      check().catch((e) => {
+        console.error("Update check failed (offline or rate limited):", e);
+        return null; // Return null gracefully if the user, e.g., has no internet
+      }),
+      sleep(7500)
+    ]);
     
     if (update) {
       const wantsUpdate = await ask(
@@ -124,8 +137,6 @@ const checkForUpdates = async () => {
       );
 
       if (wantsUpdate) {
-        appState.value = 'updating'; 
-        
         let downloaded = 0;
         let contentLength = 0;
 
@@ -150,11 +161,14 @@ const checkForUpdates = async () => {
 
         updateStatus.value = 'Restarting SauceBottle...';
         await relaunch(); 
+        return;
       }
     }
   } catch (error) {
-    console.error("Failed to check for updates:", error);
+    console.error("Critical error during boot sequence:", error);
   }
+
+  appState.value = 'welcome';
 };
 
 // ---------------------------------*
@@ -163,7 +177,6 @@ const checkForUpdates = async () => {
 
 onMounted(async () => {
   // 1. Initial State Sync
-  await checkForUpdates();
   await refreshVaultStatus();
   await syncOfflineQueue();
 
@@ -177,17 +190,20 @@ onMounted(async () => {
     console.warn("Could not load config on boot");
   }
 
-  // 3. Bind Tauri Events
+  // 3. Check for updates
+  await runBootSequence();
+
+  // 4. Bind Tauri Events
   await initTauriListeners();
 
-  // 4. Tell Rust the UI is ready so it can process anything left over from last time
+  // 5. Tell Rust the UI is ready so it can process anything left over from last time
   try {
     await invoke('frontend_ready');
   } catch (e) {
     console.error("Failed to trigger initial sweep:", e);
   }
 
-  // 5. Setup native drag-and-drop file interception
+  // 6. Setup native drag-and-drop file interception
   try {
     await getCurrentWindow().onDragDropEvent(async (event) => {
       if (event.payload.type === 'over' || event.payload.type === 'enter') {
