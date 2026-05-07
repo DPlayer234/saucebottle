@@ -58,8 +58,15 @@ async fn process_single_file(
 
     let config_snapshot = client.config().lock().unwrap().clone();
 
+    let default_results_dir = handle
+        .path()
+        .picture_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("SauceBottle")
+        .join("results");
+
     let invalid_folder = if config_snapshot.invalid_folder.trim().is_empty() {
-        "./.invalid".to_string()
+        default_results_dir.join(".invalid").to_string_lossy().to_string()
     } else {
         config_snapshot.invalid_folder.clone()
     };
@@ -129,11 +136,12 @@ async fn process_single_file(
             &ext,
             &config_snapshot,
             Some(&payload_bytes),
+            &default_results_dir
         )?;
 
-        // Populate a clean relative display path (e.g. "Arknights/Yvonne/D12345.png")
+        // Populate a clean display path (e.g. "Arknights/Yvonne/D12345.png")
         let output_base = if config_snapshot.output_folder.trim().is_empty() {
-            "./results".to_string()
+            default_results_dir.to_string_lossy().to_string()
         } else {
             config_snapshot.output_folder.clone()
         };
@@ -156,7 +164,7 @@ async fn process_single_file(
             path.file_name().unwrap_or_default(),
             e
         );
-        if let Err(move_err) = processor::move_to_invalid(&path, &config_snapshot) {
+        if let Err(move_err) = processor::move_to_invalid(&path, &config_snapshot, &default_results_dir) {
             println!("Error: Failed to move to invalid folder: {}", move_err);
         } else {
             println!("Error: Moved to invalid folder: {}", invalid_folder);
@@ -181,11 +189,12 @@ pub fn run_sweep(
     tx: &Sender<(PathBuf, bool)>,
     queued_tracker: &Arc<Mutex<HashSet<PathBuf>>>,
 ) {
+    // [TODO] This is defined twice, mild bug hazard
     let app_dir = handle
         .path()
         .picture_dir()
         .expect("Path resolution failed");
-    let watch_path = app_dir.join("input");
+    let watch_path = app_dir.join("SauceBottle").join("input");
 
     println!("Sweeping folder for unprocessed files...");
     if let Ok(entries) = std::fs::read_dir(watch_path) {
@@ -258,8 +267,8 @@ pub fn spawn_watcher(
         let app_data_dir = handle
             .path()
             .picture_dir()
-            .expect("Failed to resolve AppData");
-        let input_dir = app_data_dir.join("input");
+            .expect("Failed to resolve observer path");
+        let input_dir = app_data_dir.join("SauceBottle").join("input");
 
         std::fs::create_dir_all(&input_dir).expect("Dir creation failed");
 

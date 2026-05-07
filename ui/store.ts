@@ -29,6 +29,7 @@ const sauceQuotes = [
 
 // -- App & Processing State --
 export const appState = ref<'welcome' | 'processing' | 'result' | 'error' | 'updating'>('welcome');
+export const autoUpdateEnabled = ref(true);
 export const isPermanentScan = ref(true);
 export const isProcessing = ref(true);
 export const confidenceThreshold = ref(80);

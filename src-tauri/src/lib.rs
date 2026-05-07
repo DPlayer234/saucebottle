@@ -443,6 +443,7 @@ async fn fetch_booru_page(
 /// * `url` - The direct link to the image file.
 /// * `filename` - The name the file should be saved as.
 /// * `state` - The managed Tauri application state.
+/// * `handle` - The Tauri app handle for path resolution.
 ///
 /// # Returns
 /// * `Result<(), String>` - Success, or an error if the network request or disk write fails.
@@ -451,12 +452,14 @@ async fn download_image(
     url: String,
     filename: String,
     state: tauri::State<'_, AppState>,
+    handle: tauri::AppHandle
 ) -> Result<(), String> {
     let config = state.config.lock().unwrap().clone();
 
     let mut base_dir = PathBuf::from(&config.output_folder);
     if base_dir.as_os_str().is_empty() {
-        base_dir = PathBuf::from("./results");
+        let pic_dir = handle.path().picture_dir().map_err(|_| "Failed to resolve Pictures directory")?;
+        base_dir = pic_dir.join("SauceBottle").join("results");
     }
 
     // Use user setting or fallback to .downloads
@@ -570,6 +573,7 @@ pub fn run() {
     let api_client = Arc::new(ApiClient::new(live_config.clone()));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())

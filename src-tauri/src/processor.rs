@@ -209,11 +209,12 @@ pub fn move_to_results(
     extension: &str,
     config: &AppConfig,
     payload: Option<&[u8]>,
+    default_base_dir: &Path
 ) -> Result<PathBuf, String> {
     // 1. Resolve base results directory (Default: ./results)
     let mut base_dir = PathBuf::from(&config.output_folder);
     if base_dir.as_os_str().is_empty() {
-        base_dir = PathBuf::from("./results");
+        base_dir = default_base_dir.to_path_buf();
     }
 
     // 2. Build Hierarchy
@@ -269,7 +270,7 @@ pub fn move_to_results(
             "move_folder_root" => {
                 let mut dup_root = PathBuf::from(&config.output_folder);
                 if dup_root.as_os_str().is_empty() {
-                    dup_root = PathBuf::from("./results");
+                    dup_root = default_base_dir.to_path_buf();
                 }
 
                 let dup_dir = dup_root.join(".duplicates");
@@ -306,12 +307,19 @@ pub fn move_to_results(
     Ok(dest_path)
 }
 
-pub fn move_to_invalid(source_path: &Path, config: &AppConfig) -> Result<(), String> {
+pub fn move_to_invalid(source_path: &Path, config: &AppConfig, default_base_dir: &Path) -> Result<(), String> {
     let mut base_dir = PathBuf::from(&config.output_folder);
     if base_dir.as_os_str().is_empty() {
-        base_dir = PathBuf::from("./results");
+        base_dir = default_base_dir.to_path_buf();
     }
-    base_dir = base_dir.join(&config.invalid_folder);
+    
+    let folder_name = if config.invalid_folder.trim().is_empty() {
+        ".invalid"
+    } else {
+        config.invalid_folder.trim()
+    };
+    
+    base_dir = base_dir.join(folder_name);
 
     fs::create_dir_all(&base_dir).map_err(|e| e.to_string())?;
 

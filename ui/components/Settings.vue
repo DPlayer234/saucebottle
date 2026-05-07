@@ -13,7 +13,7 @@ import { open, ask } from '@tauri-apps/plugin-dialog';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
-import { isPermanentScan, confidenceThreshold } from '../store';
+import { isPermanentScan, confidenceThreshold, autoUpdateEnabled } from '../store';
 
 // ---------------------------------*
 // ---- META & INTERNAL STATE ------*
@@ -105,6 +105,11 @@ onMounted(async () => {
     renameBehavior.value = config.rename_behavior || 'site_id';
     duplicateBehavior.value = config.duplicate_behavior || 'rename_copy';
     confidenceThreshold.value = config.confidence_threshold || 80;
+
+    if (config.flags && typeof config.flags.autoUpdateEnabled === 'boolean') {
+      autoUpdateEnabled.value = config.flags.autoUpdateEnabled;
+    }
+
     outputFolder.value = config.output_folder || '';
     originalFolder.value = config.original_folder || '.original';
     invalidFolder.value = config.invalid_folder || '.invalid';
@@ -134,7 +139,7 @@ onMounted(async () => {
  */
 watch(
   [
-    isPermanentScan, flags, activeHierarchy, availableBlocks, renameBehavior, 
+    isPermanentScan, autoUpdateEnabled, flags, activeHierarchy, availableBlocks, renameBehavior, 
     duplicateBehavior, confidenceThreshold, outputFolder, originalFolder, 
     invalidFolder, downloadsFolder, blacklist
   ], 
@@ -148,7 +153,11 @@ watch(
       console.error("Failed to sync state with Rust:", e);
     }
 
-    const payloadFlags = { ...flags.value, isPermanentScan: isPermanentScan.value };
+    const payloadFlags = {
+      ...flags.value,
+      isPermanentScan: isPermanentScan.value,
+      autoUpdateEnabled: autoUpdateEnabled.value
+    };
 
     const payload = {
       services: hiddenServices.value,
@@ -300,6 +309,13 @@ const handleApplyModsChange = async (e: Event) => {
         <div class="info-wrapper">
           <InfoIcon :size="14" class="info-icon" />
           <span class="tooltip edge-right">Continuously monitor the /input folder for new drops without needing to click Run.</span>
+        </div>
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" v-model="autoUpdateEnabled" /> Enable checking for new updates
+        <div class="info-wrapper">
+          <InfoIcon :size="14" class="info-icon" />
+          <span class="tooltip edge-right">Check for new versions of SauceBottle on startup.</span>
         </div>
       </label>
       
