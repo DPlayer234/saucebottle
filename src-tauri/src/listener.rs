@@ -217,14 +217,14 @@ pub fn run_sweep(
 ///                                                              (like `run_sweep`) can feed files into the queue,
 ///                                                              along with the active queue tracker.
 pub fn spawn_watcher(
-    app_handle: AppHandle,
+    handle: AppHandle,
     api_client: Arc<ApiClient>,
     is_scanning: Arc<AtomicBool>,
 ) -> (Sender<(PathBuf, bool)>, Arc<Mutex<HashSet<PathBuf>>>) {
     let (proc_tx, proc_rx) = channel::<(PathBuf, bool)>();
     let queued_tracker = Arc::new(Mutex::new(HashSet::new()));
 
-    let processor_handle = app_handle.clone();
+    let processor_handle = handle.clone();
     let processor_scanning = is_scanning.clone();
     let worker_tracker = queued_tracker.clone();
 
@@ -255,9 +255,9 @@ pub fn spawn_watcher(
 
     // Thread 2: OS File-System Observer
     std::thread::spawn(move || {
-        let app_data_dir = app_handle
+        let app_data_dir = handle
             .path()
-            .app_data_dir()
+            .picture_dir()
             .expect("Failed to resolve AppData");
         let input_dir = app_data_dir.join("input");
 
@@ -281,7 +281,7 @@ pub fn spawn_watcher(
                             // Prevent double queuing on drops as well
                             if observer_tracker.lock().unwrap().insert(path.clone()) {
                                 println!("Queued new drop: {:?}", path);
-                                let _ = app_handle.emit("queue-add", ());
+                                let _ = handle.emit("queue-add", ());
                                 let _ = watch_tx_clone.send((path, true));
                             }
                         }

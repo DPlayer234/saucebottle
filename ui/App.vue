@@ -243,7 +243,7 @@ onMounted(async () => {
         class="header-play-btn"
         :class="{ breathing: isBreathing }"
         @click="toggleProcessing"
-        :title="isProcessing ? 'Pause' : 'Play'"
+        :title="isProcessing ? 'Pause' : 'Run'"
       >
         <PauseIcon v-if="isProcessing" :size="18" />
         <PlayIcon v-else :size="18" fill="currentColor" />

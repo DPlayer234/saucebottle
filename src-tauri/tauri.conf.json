@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "saucebottle",
+  "productName": "SauceBottle",
   "version": "1.0.2",
   "identifier": "com.thirteenlabs.saucebottle",
   "build": {
@@ -42,7 +42,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM0NjE5OEZEOEYyM0FFRkQKUldUOXJpT1AvWmhoeEY5TVdGakxUc1VSVmRQTUNCRHBFKzV2QzN6MFBxd3U0R0diekRraHFUMUwK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg1MjYyQkE2QUUzMzBBODEKUldTQkNqT3VwaXNtaFNtNUZSMXFxU3JOQWhzamZtSXFtSjR0Q3lGQ2F5cTNLYWhvcW5VL0hpdWgK",
       "endpoints": [
         "https://github.com/GitThirteen/saucebottle/releases/latest/download/latest.json"
       ]
