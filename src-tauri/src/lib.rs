@@ -90,6 +90,7 @@ fn save_config(config: AppConfig, state: tauri::State<'_, AppState>) -> Result<(
     
     fs::write(config_path, data).map_err(|e| e.to_string())?;
 
+    *state.config.lock().unwrap() = config;
     Ok(())
 }
 
