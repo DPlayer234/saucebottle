@@ -84,11 +84,11 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
 #[tauri::command]
 fn save_config(config: AppConfig, state: tauri::State<'_, AppState>) -> Result<(), String> {
     let data = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    fs::write("./config.json", data).map_err(|e| e.to_string())?;
-
-    *state.config.lock().unwrap() = config;
-    Ok(())
-}
+    
+    let exe_dir = std::env::current_exe().map_err(|e| e.to_string())?;
+    let config_path = exe_dir.parent().ok_or("No parent dir")?.join("config.json");
+    
+    fs::write(config_path, data).map_err(|e| e.to_string())?;
 
 /// A hook called by the Vue frontend once the UI has fully mounted.
 /// Triggers an initial sweep of the input folder to process any files left over from a previous session.
@@ -421,6 +421,7 @@ async fn fetch_booru_page(
 /// * `url` - The direct link to the image file.
 /// * `filename` - The name the file should be saved as.
 /// * `state` - The managed Tauri application state.
+/// * `handle` - The Tauri app handle for path resolution.
 ///
 /// # Returns
 /// * `Result<(), String>` - Success, or an error if the network request or disk write fails.
@@ -429,12 +430,14 @@ async fn download_image(
     url: String,
     filename: String,
     state: tauri::State<'_, AppState>,
+    handle: tauri::AppHandle
 ) -> Result<(), String> {
     let config = state.config.lock().unwrap().clone();
 
     let mut base_dir = PathBuf::from(&config.output_folder);
     if base_dir.as_os_str().is_empty() {
-        base_dir = PathBuf::from("./results");
+        let pic_dir = handle.path().picture_dir().map_err(|_| "Failed to resolve Pictures directory")?;
+        base_dir = pic_dir.join("SauceBottle").join("results");
     }
 
     // Use user setting or fallback to .downloads
@@ -543,7 +546,14 @@ pub fn run() {
         dbus_secret_service_keyring_store::Store::new().expect("Failed to init Linux Secret Service"),
     );
 
-    let config_data = std::fs::read_to_string("./config.json").unwrap_or_else(|_| "{}".to_string());
+    let exe_dir = std::env::current_exe()
+        .expect("Failed to get executable path")
+        .parent()
+        .expect("Executable has no parent directory")
+        .to_path_buf();
+    let config_path = exe_dir.join("config.json");
+
+    let config_data = std::fs::read_to_string(&config_path).unwrap_or_else(|_| "{}".to_string());
     let config: AppConfig = serde_json::from_str(&config_data).unwrap_or_default();
 
     let is_permanently_scanning = config.flags.get("isPermanentScan").copied().unwrap_or(true);
