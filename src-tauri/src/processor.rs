@@ -209,6 +209,7 @@ pub fn move_to_results(
     extension: &str,
     config: &AppConfig,
     payload: Option<&[u8]>,
+    default_base_dir: &Path
 ) -> Result<PathBuf, String> {
     // 1. Resolve base results directory (Default: ./results)
     let mut base_dir = PathBuf::from(&config.output_folder);
