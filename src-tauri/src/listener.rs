@@ -181,11 +181,12 @@ pub fn run_sweep(
     tx: &Sender<(PathBuf, bool)>,
     queued_tracker: &Arc<Mutex<HashSet<PathBuf>>>,
 ) {
+    // [TODO] This is defined twice, mild bug hazard
     let app_dir = handle
         .path()
         .picture_dir()
         .expect("Path resolution failed");
-    let watch_path = app_dir.join("input");
+    let watch_path = app_dir.join("SauceBottle").join("input");
 
     println!("Sweeping folder for unprocessed files...");
     if let Ok(entries) = std::fs::read_dir(watch_path) {
@@ -258,8 +259,8 @@ pub fn spawn_watcher(
         let app_data_dir = handle
             .path()
             .picture_dir()
-            .expect("Failed to resolve AppData");
-        let input_dir = app_data_dir.join("input");
+            .expect("Failed to resolve observer path");
+        let input_dir = app_data_dir.join("SauceBottle").join("input");
 
         std::fs::create_dir_all(&input_dir).expect("Dir creation failed");
 

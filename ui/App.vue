@@ -23,9 +23,10 @@ import SettingsView from './components/Settings.vue';
 import LogsView from './components/Console.vue';
 import DownloadView from './components/Download.vue';
 
-import { 
+import {
   isPermanentScan,
   isProcessing,
+  autoUpdateEnabled,
   initTauriListeners,
   hasCredentials,
   refreshVaultStatus,
@@ -117,6 +118,13 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
  * concurrently checking GitHub for a new release.
  */
 const runBootSequence = async () => {
+  if (!autoUpdateEnabled.value) {
+    console.log("Auto-updates are disabled in settings. Skipping check.");
+    
+    appState.value = 'welcome';
+    return;
+  }
+
   appState.value = 'updating';
   updateStatus.value = 'Checking for updates...';
   updateProgress.value = 0; 
@@ -183,9 +191,14 @@ onMounted(async () => {
   // 2. Load basic config for UI toggles
   try {
     const config: any = await invoke('get_config');
-    if (config.flags && typeof config.flags.isPermanentScan === 'boolean') {
-      isPermanentScan.value = config.flags.isPermanentScan;
-    }
+    if (config.flags) {
+        if (typeof config.flags.isPermanentScan === 'boolean') {
+          isPermanentScan.value = config.flags.isPermanentScan;
+        }
+        if (typeof config.flags.autoUpdateEnabled === 'boolean') {
+          autoUpdateEnabled.value = config.flags.autoUpdateEnabled;
+        }
+      }
   } catch (e) {
     console.warn("Could not load config on boot");
   }
