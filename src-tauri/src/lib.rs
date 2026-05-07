@@ -10,10 +10,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use keyring_core::Entry;
+use tauri::Manager;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::Manager;
 
 use crate::api::ApiClient;
 use crate::models::AppConfig;
@@ -30,7 +30,7 @@ struct AppState {
     is_active: Arc<AtomicBool>,
     queue_tx: std::sync::mpsc::Sender<(PathBuf, bool)>,
     queued_tracker: Arc<Mutex<HashSet<PathBuf>>>,
-    config: Arc<Mutex<AppConfig>>,
+    config: Arc<Mutex<Arc<AppConfig>>>,
 }
 
 #[derive(serde::Serialize)]
@@ -67,9 +67,9 @@ fn set_scan_state(active: bool, state: tauri::State<'_, AppState>, handle: tauri
 /// * `state` - The managed Tauri application state.
 ///
 /// # Returns
-/// * `Result<AppConfig, String>` - A clone of the current configuration.
+/// * `Result<Arc<AppConfig>, String>` - A clone of the current configuration.
 #[tauri::command]
-fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
+fn get_config(state: tauri::State<'_, AppState>) -> Result<Arc<AppConfig>, String> {
     Ok(state.config.lock().unwrap().clone())
 }
 
@@ -84,13 +84,13 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
 #[tauri::command]
 fn save_config(config: AppConfig, state: tauri::State<'_, AppState>) -> Result<(), String> {
     let data = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    
+
     let exe_dir = std::env::current_exe().map_err(|e| e.to_string())?;
     let config_path = exe_dir.parent().ok_or("No parent dir")?.join("config.json");
-    
+
     fs::write(config_path, data).map_err(|e| e.to_string())?;
 
-    *state.config.lock().unwrap() = config;
+    *Arc::make_mut(&mut state.config.lock().unwrap()) = config;
     Ok(())
 }
 
@@ -229,40 +229,39 @@ fn import_to_input_recursive(
     }
 
     if path.is_file() {
-        if is_valid_image(path) {
-            if let Some(name) = path.file_name() {
-                let mut dest = target_dir.join(name);
+        if is_valid_image(path)
+            && let Some(name) = path.file_name()
+        {
+            let mut dest = target_dir.join(name);
 
-                let mut counter = 0;
-                let file_stem = dest
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-                let extension = dest
-                    .extension()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
+            let mut counter = 0;
+            let file_stem = dest
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            let extension = dest
+                .extension()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
 
-                while dest.exists() {
-                    counter += 1;
-                    dest =
-                        target_dir.join(format!("{}_import{}.{}", file_stem, counter, extension));
+            while dest.exists() {
+                counter += 1;
+                dest = target_dir.join(format!("{}_import{}.{}", file_stem, counter, extension));
+            }
+
+            let moved = if depth == 0 {
+                match fs::rename(path, &dest) {
+                    Ok(_) => true,
+                    Err(_) => fs::copy(path, &dest).is_ok() && fs::remove_file(path).is_ok(),
                 }
+            } else {
+                fs::copy(path, &dest).is_ok()
+            };
 
-                let moved = if depth == 0 {
-                    match fs::rename(path, &dest) {
-                        Ok(_) => true,
-                        Err(_) => fs::copy(path, &dest).is_ok() && fs::remove_file(path).is_ok(),
-                    }
-                } else {
-                    fs::copy(path, &dest).is_ok()
-                };
-
-                if moved {
-                    *copied_count += 1;
-                }
+            if moved {
+                *copied_count += 1;
             }
         }
     } else if path.is_dir() {
@@ -298,9 +297,7 @@ fn process_dropped_files(paths: Vec<String>, handle: tauri::AppHandle) -> Result
     let mut copied_count = 0;
 
     for p in paths {
-        if let Err(e) = import_to_input_recursive(Path::new(&p), &input_dir, 0, &mut copied_count) {
-            return Err(e);
-        }
+        import_to_input_recursive(Path::new(&p), &input_dir, 0, &mut copied_count)?;
     }
 
     Ok(format!("Successfully queued {} images.", copied_count))
@@ -347,15 +344,13 @@ async fn fetch_booru_page(
     let mut api_key = String::new();
 
     // Yande.re doesn't require auth for standard queries so we can use it as default (wohoo!)
-    if service != "Yande.re" {
-        if let Ok(entry) = keyring_core::Entry::new("saucebottle_vault", &service.to_lowercase()) {
-            if let Ok(secret_string) = entry.get_password() {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&secret_string) {
-                    username = parsed["username"].as_str().unwrap_or("").to_string();
-                    api_key = parsed["apiKey"].as_str().unwrap_or("").to_string();
-                }
-            }
-        }
+    if service != "Yande.re"
+        && let Ok(entry) = keyring_core::Entry::new("saucebottle_vault", &service.to_lowercase())
+        && let Ok(secret_string) = entry.get_password()
+        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&secret_string)
+    {
+        username = parsed["username"].as_str().unwrap_or("").to_string();
+        api_key = parsed["apiKey"].as_str().unwrap_or("").to_string();
     }
 
     // Correctly format tags (e.g. "blue archive, official art" -> "blue_archive+official_art")
@@ -368,10 +363,22 @@ async fn fetch_booru_page(
 
     // URL magic
     let url = match service.as_str() {
-        "Danbooru" => format!("https://danbooru.donmai.us/posts.json?tags={}&login={}&api_key={}&page={}", formatted_tags, username, api_key, page),
-        "Gelbooru" => format!("https://gelbooru.com/index.php?page=dapi&s=post&q=index&tags={}&user_id={}&api_key={}&pid={}&json=1&limit=42", formatted_tags, username, api_key, page - 1),
-        "Yande.re" => format!("https://yande.re/post.json?tags={}&page={}", formatted_tags, page),
-        _ => return Err("Unknown service".to_string())
+        "Danbooru" => format!(
+            "https://danbooru.donmai.us/posts.json?tags={}&login={}&api_key={}&page={}",
+            formatted_tags, username, api_key, page
+        ),
+        "Gelbooru" => format!(
+            "https://gelbooru.com/index.php?page=dapi&s=post&q=index&tags={}&user_id={}&api_key={}&pid={}&json=1&limit=42",
+            formatted_tags,
+            username,
+            api_key,
+            page - 1
+        ),
+        "Yande.re" => format!(
+            "https://yande.re/post.json?tags={}&page={}",
+            formatted_tags, page
+        ),
+        _ => return Err("Unknown service".to_string()),
     };
 
     let user_agent = if username.is_empty() {
@@ -406,7 +413,9 @@ async fn fetch_booru_page(
                 let ext = item["file_ext"]
                     .as_str()
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| file_url.split('.').last().unwrap_or("jpg").to_string());
+                    .unwrap_or_else(|| {
+                        file_url.split('.').next_back().unwrap_or("jpg").to_string()
+                    });
 
                 images.push(DLImage {
                     id,
@@ -434,21 +443,24 @@ async fn download_image(
     url: String,
     filename: String,
     state: tauri::State<'_, AppState>,
-    handle: tauri::AppHandle
+    handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let config = state.config.lock().unwrap().clone();
 
     let mut base_dir = PathBuf::from(&config.output_folder);
     if base_dir.as_os_str().is_empty() {
-        let pic_dir = handle.path().picture_dir().map_err(|_| "Failed to resolve Pictures directory")?;
+        let pic_dir = handle
+            .path()
+            .picture_dir()
+            .map_err(|_| "Failed to resolve Pictures directory")?;
         base_dir = pic_dir.join("SauceBottle").join("results");
     }
 
     // Use user setting or fallback to .downloads
     let dl_folder_name = if config.downloads_folder.trim().is_empty() {
-        ".downloads".to_string()
+        ".downloads"
     } else {
-        config.downloads_folder.clone()
+        &config.downloads_folder
     };
 
     let dl_dir = base_dir.join(dl_folder_name);
@@ -476,29 +488,29 @@ async fn download_image(
 fn open_system_folder(
     folder_target: String,
     state: tauri::State<'_, AppState>,
-    handle: tauri::AppHandle
+    handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let config = state.config.lock().unwrap().clone();
 
     // Resolve the base results directory
     let mut target_dir = std::path::PathBuf::from(&config.output_folder);
-    
+
     // If the user hasn't set a custom folder, use Pictures/SauceBottle/results as fallback
     if target_dir.as_os_str().is_empty() {
         let pic_dir = handle
             .path()
             .picture_dir()
             .map_err(|_| "Failed to resolve OS Pictures directory".to_string())?;
-            
+
         target_dir = pic_dir.join("SauceBottle").join("results");
     }
 
     // Append the downloads folder if requested
     if folder_target == "downloads" {
         let dl_folder = if config.downloads_folder.trim().is_empty() {
-            ".downloads".to_string()
+            ".downloads"
         } else {
-            config.downloads_folder.clone()
+            &config.downloads_folder
         };
         target_dir = target_dir.join(dl_folder);
     }
@@ -543,11 +555,13 @@ pub fn run() {
     );
     #[cfg(target_os = "macos")]
     keyring_core::set_default_store(
-        apple_native_keyring_store::keychain::Store::new().expect("Failed to init Apple Credential Manager"),
+        apple_native_keyring_store::keychain::Store::new()
+            .expect("Failed to init Apple Credential Manager"),
     );
     #[cfg(target_os = "linux")]
     keyring_core::set_default_store(
-        dbus_secret_service_keyring_store::Store::new().expect("Failed to init Linux Secret Service"),
+        dbus_secret_service_keyring_store::Store::new()
+            .expect("Failed to init Linux Secret Service"),
     );
 
     let exe_dir = std::env::current_exe()
@@ -563,7 +577,7 @@ pub fn run() {
     let is_permanently_scanning = config.flags.get("isPermanentScan").copied().unwrap_or(true);
     let scan_active_flag = Arc::new(std::sync::atomic::AtomicBool::new(is_permanently_scanning));
 
-    let live_config = Arc::new(Mutex::new(config));
+    let live_config = Arc::new(Mutex::new(Arc::new(config)));
     let api_client = Arc::new(ApiClient::new(live_config.clone()));
 
     tauri::Builder::default()
@@ -591,26 +605,31 @@ pub fn run() {
             download_image,
             open_system_folder
         ])
-        .on_window_event(|window, event| match event {
-            tauri::WindowEvent::CloseRequested { api, .. } => {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 window.hide().unwrap();
                 api.prevent_close();
             }
-            _ => {}
         })
         .setup(move |app| {
             use tauri::Manager;
-            
-            let pic_dir = app.path().picture_dir().expect("Failed to resolve Pictures directory");
+
+            let pic_dir = app
+                .path()
+                .picture_dir()
+                .expect("Failed to resolve Pictures directory");
             let saucebottle_dir = pic_dir.join("SauceBottle");
-            
+
             let input_dir = saucebottle_dir.join("input");
             let results_dir = saucebottle_dir.join("results");
-            
+
             std::fs::create_dir_all(&input_dir).expect("Failed to create input directory");
             std::fs::create_dir_all(&results_dir).expect("Failed to create results directory");
-            
-            println!("SauceBottle File System initialized at: {:?}", saucebottle_dir);
+
+            println!(
+                "SauceBottle File System initialized at: {:?}",
+                saucebottle_dir
+            );
 
             let handle = app.handle().clone();
             let client = Arc::clone(&api_client);
@@ -632,19 +651,19 @@ pub fn run() {
                         app.exit(0);
                     }
                 })
-                .on_tray_icon_event(|tray, event| match event {
-                    TrayIconEvent::Click {
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
                         ..
-                    } => {
+                    } = event
+                    {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
                     }
-                    _ => {}
                 })
                 .build(app);
 
