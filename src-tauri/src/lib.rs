@@ -89,6 +89,8 @@ fn save_config(config: AppConfig, state: tauri::State<'_, AppState>) -> Result<(
     let config_path = exe_dir.parent().ok_or("No parent dir")?.join("config.json");
     
     fs::write(config_path, data).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 /// A hook called by the Vue frontend once the UI has fully mounted.
