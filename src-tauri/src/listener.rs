@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc::channel, mpsc::Sender, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc::Sender, mpsc::channel};
 use std::time::Duration;
 
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
@@ -66,7 +66,10 @@ async fn process_single_file(
         .join("results");
 
     let invalid_folder = if config_snapshot.invalid_folder.trim().is_empty() {
-        default_results_dir.join(".invalid").to_string_lossy().to_string()
+        default_results_dir
+            .join(".invalid")
+            .to_string_lossy()
+            .into_owned()
     } else {
         config_snapshot.invalid_folder.clone()
     };
@@ -136,12 +139,12 @@ async fn process_single_file(
             &ext,
             &config_snapshot,
             Some(&payload_bytes),
-            &default_results_dir
+            &default_results_dir,
         )?;
 
         // Populate a clean display path (e.g. "Arknights/Yvonne/D12345.png")
         let output_base = if config_snapshot.output_folder.trim().is_empty() {
-            default_results_dir.to_string_lossy().to_string()
+            default_results_dir.to_string_lossy().into_owned()
         } else {
             config_snapshot.output_folder.clone()
         };
@@ -149,7 +152,7 @@ async fn process_single_file(
         let display_path = clean_full
             .strip_prefix(&output_base)
             .unwrap_or(&clean_full)
-            .trim_start_matches(|c| c == '/' || c == '\\')
+            .trim_start_matches(['/', '\\'])
             .replace('\\', "/");
         booru_data.file_path = display_path;
 
@@ -164,7 +167,9 @@ async fn process_single_file(
             path.file_name().unwrap_or_default(),
             e
         );
-        if let Err(move_err) = processor::move_to_invalid(&path, &config_snapshot, &default_results_dir) {
+        if let Err(move_err) =
+            processor::move_to_invalid(&path, &config_snapshot, &default_results_dir)
+        {
             println!("Error: Failed to move to invalid folder: {}", move_err);
         } else {
             println!("Error: Moved to invalid folder: {}", invalid_folder);
@@ -190,10 +195,7 @@ pub fn run_sweep(
     queued_tracker: &Arc<Mutex<HashSet<PathBuf>>>,
 ) {
     // [TODO] This is defined twice, mild bug hazard
-    let app_dir = handle
-        .path()
-        .picture_dir()
-        .expect("Path resolution failed");
+    let app_dir = handle.path().picture_dir().expect("Path resolution failed");
     let watch_path = app_dir.join("SauceBottle").join("input");
 
     println!("Sweeping folder for unprocessed files...");
@@ -201,11 +203,9 @@ pub fn run_sweep(
         let mut tracker = queued_tracker.lock().unwrap();
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() {
-                if tracker.insert(path.clone()) {
-                    let _ = handle.emit("queue-add", ());
-                    let _ = tx.send((path, false)); // already on disk - no write-delay needed
-                }
+            if path.is_file() && tracker.insert(path.clone()) {
+                let _ = handle.emit("queue-add", ());
+                let _ = tx.send((path, false)); // already on disk - no write-delay needed
             }
         }
     }
@@ -279,20 +279,20 @@ pub fn spawn_watcher(
             .expect("Watch failed");
 
         for res in rx {
-            if let Ok(event) = res {
-                if event.kind.is_create() {
-                    for path in event.paths {
-                        if path.is_file() {
-                            if !is_scanning.load(Ordering::Relaxed) {
-                                continue;
-                            }
+            if let Ok(event) = res
+                && event.kind.is_create()
+            {
+                for path in event.paths {
+                    if path.is_file() {
+                        if !is_scanning.load(Ordering::Relaxed) {
+                            continue;
+                        }
 
-                            // Prevent double queuing on drops as well
-                            if observer_tracker.lock().unwrap().insert(path.clone()) {
-                                println!("Queued new drop: {:?}", path);
-                                let _ = handle.emit("queue-add", ());
-                                let _ = watch_tx_clone.send((path, true));
-                            }
+                        // Prevent double queuing on drops as well
+                        if observer_tracker.lock().unwrap().insert(path.clone()) {
+                            println!("Queued new drop: {:?}", path);
+                            let _ = handle.emit("queue-add", ());
+                            let _ = watch_tx_clone.send((path, true));
                         }
                     }
                 }
